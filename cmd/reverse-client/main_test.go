@@ -10,13 +10,15 @@ import (
   "reflect"
   "testing"
   "time"
+
+  protocolvalidation "github.com/portflare/protocol/validation"
 )
 
 func TestIsValidClientKey(t *testing.T) {
-  if !isValidClientKey("pf_123") {
+  if !protocolvalidation.IsValidClientKey("pf_123") {
     t.Fatal("expected pf_ prefix to be accepted")
   }
-  if isValidClientKey("abc123") {
+  if protocolvalidation.IsValidClientKey("abc123") {
     t.Fatal("expected missing pf_ prefix to be rejected")
   }
 }

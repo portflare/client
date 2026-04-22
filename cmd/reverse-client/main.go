@@ -24,6 +24,9 @@ import (
 
   "github.com/gorilla/websocket"
 
+  protocoltypes "github.com/portflare/protocol/types"
+  protocolvalidation "github.com/portflare/protocol/validation"
+
   "github.com/portflare/client/internal/buildinfo"
 )
 
@@ -42,34 +45,9 @@ type Config struct {
   DiscoverNameByPort map[int]string
 }
 
-type AppRegistration struct {
-  AppName       string    `json:"app_name"`
-  TargetURL     string    `json:"target_url"`
-  PublicPort    int       `json:"public_port,omitempty"`
-  Approved      bool      `json:"approved"`
-  Source        string    `json:"source,omitempty"`
-  DiscoveredPort int      `json:"discovered_port,omitempty"`
-  Offline       bool      `json:"offline,omitempty"`
-  LastSeenAt    time.Time `json:"last_seen_at,omitempty"`
-  CreatedAt     time.Time `json:"created_at"`
-  UpdatedAt     time.Time `json:"updated_at"`
-}
+type AppRegistration = protocoltypes.AppRegistration
 
-type ConnectMessage struct {
-  Type        string              `json:"type"`
-  RequestID   string              `json:"request_id,omitempty"`
-  AppName     string              `json:"app_name,omitempty"`
-  PublicPort  int                 `json:"public_port,omitempty"`
-  Method      string              `json:"method,omitempty"`
-  URL         string              `json:"url,omitempty"`
-  Headers     map[string][]string `json:"headers,omitempty"`
-  BodyBase64  string              `json:"body_base64,omitempty"`
-  StatusCode  int                 `json:"status_code,omitempty"`
-  Error       string              `json:"error,omitempty"`
-  Approved    bool                `json:"approved,omitempty"`
-  UserName    string              `json:"user_name,omitempty"`
-  Message     string              `json:"message,omitempty"`
-}
+type ConnectMessage = protocoltypes.ConnectMessage
 
 type clientState struct {
   Apps map[string]*AppRegistration `json:"apps"`
@@ -219,7 +197,7 @@ func runDaemon() {
   logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
   version, commit, buildDate := buildinfo.Effective()
   logger.Info("reverse client starting", "version", version, "commit", commit, "build_date", buildDate)
-  if cfg.ClientKey != "" && !isValidClientKey(cfg.ClientKey) {
+  if cfg.ClientKey != "" && !protocolvalidation.IsValidClientKey(strings.TrimSpace(cfg.ClientKey)) {
     logger.Error("invalid client key format", "message", "REVERSE_CLIENT_KEY must start with pf_")
     os.Exit(1)
   }
@@ -376,7 +354,7 @@ func (s *Service) handleApps(w http.ResponseWriter, r *http.Request) {
     }
 
     if conn != nil {
-      _ = s.send(ConnectMessage{Type: "register", AppName: req.AppName, PublicPort: req.PublicPort})
+      _ = s.send(ConnectMessage{Type: protocoltypes.MessageTypeRegister, AppName: req.AppName, PublicPort: req.PublicPort})
     }
 
     writeJSON(w, http.StatusCreated, map[string]any{
@@ -490,7 +468,7 @@ func (s *Service) refreshDiscovery() {
       s.apps[appName] = app
       s.mu.Unlock()
       _ = s.saveState()
-      _ = s.sendIfConnected(ConnectMessage{Type: "register", AppName: appName})
+      _ = s.sendIfConnected(ConnectMessage{Type: protocoltypes.MessageTypeRegister, AppName: appName})
       s.logger.Info("discovered app", "app", appName, "port", port)
       continue
     }
@@ -518,7 +496,7 @@ func (s *Service) refreshDiscovery() {
 
     if changed {
       _ = s.saveState()
-      _ = s.sendIfConnected(ConnectMessage{Type: "register", AppName: appName, PublicPort: app.PublicPort})
+      _ = s.sendIfConnected(ConnectMessage{Type: protocoltypes.MessageTypeRegister, AppName: appName, PublicPort: app.PublicPort})
     }
   }
 
@@ -600,7 +578,7 @@ func (s *Service) connectAndServe(ctx context.Context) error {
   s.mu.Unlock()
 
   for _, app := range apps {
-    if err := s.send(ConnectMessage{Type: "register", AppName: app.AppName, PublicPort: app.PublicPort}); err != nil {
+    if err := s.send(ConnectMessage{Type: protocoltypes.MessageTypeRegister, AppName: app.AppName, PublicPort: app.PublicPort}); err != nil {
       return err
     }
   }
@@ -621,7 +599,7 @@ func (s *Service) connectAndServe(ctx context.Context) error {
       s.currentUser = msg.UserName
       s.mu.Unlock()
       s.logger.Info("connected", "user", msg.UserName)
-    case "register-ack":
+    case protocoltypes.MessageTypeRegisterAck:
       s.mu.Lock()
       if app, ok := s.apps[msg.AppName]; ok {
         app.Approved = msg.Approved
@@ -646,22 +624,22 @@ func (s *Service) handleProxyRequest(msg ConnectMessage) {
   app, ok := s.apps[msg.AppName]
   s.mu.RUnlock()
   if !ok {
-    _ = s.send(ConnectMessage{Type: "response", RequestID: msg.RequestID, Error: "app is not registered on this client"})
+    _ = s.send(ConnectMessage{Type: protocoltypes.MessageTypeResponse, RequestID: msg.RequestID, Error: "app is not registered on this client"})
     return
   }
   if app.Offline {
-    _ = s.send(ConnectMessage{Type: "response", RequestID: msg.RequestID, Error: "app is currently offline on this client"})
+    _ = s.send(ConnectMessage{Type: protocoltypes.MessageTypeResponse, RequestID: msg.RequestID, Error: "app is currently offline on this client"})
     return
   }
 
   reqURL, err := url.Parse(strings.TrimSpace(app.TargetURL))
   if err != nil {
-    _ = s.send(ConnectMessage{Type: "response", RequestID: msg.RequestID, Error: "invalid target URL"})
+    _ = s.send(ConnectMessage{Type: protocoltypes.MessageTypeResponse, RequestID: msg.RequestID, Error: "invalid target URL"})
     return
   }
   forwarded, err := url.Parse(msg.URL)
   if err != nil {
-    _ = s.send(ConnectMessage{Type: "response", RequestID: msg.RequestID, Error: "invalid forwarded URL"})
+    _ = s.send(ConnectMessage{Type: protocoltypes.MessageTypeResponse, RequestID: msg.RequestID, Error: "invalid forwarded URL"})
     return
   }
   reqURL.Path = forwarded.Path
@@ -670,13 +648,13 @@ func (s *Service) handleProxyRequest(msg ConnectMessage) {
 
   body, err := base64.StdEncoding.DecodeString(msg.BodyBase64)
   if err != nil {
-    _ = s.send(ConnectMessage{Type: "response", RequestID: msg.RequestID, Error: "invalid request body"})
+    _ = s.send(ConnectMessage{Type: protocoltypes.MessageTypeResponse, RequestID: msg.RequestID, Error: "invalid request body"})
     return
   }
 
   req, err := http.NewRequest(msg.Method, reqURL.String(), bytes.NewReader(body))
   if err != nil {
-    _ = s.send(ConnectMessage{Type: "response", RequestID: msg.RequestID, Error: err.Error()})
+    _ = s.send(ConnectMessage{Type: protocoltypes.MessageTypeResponse, RequestID: msg.RequestID, Error: err.Error()})
     return
   }
   req.Header = make(http.Header, len(msg.Headers))
@@ -696,19 +674,19 @@ func (s *Service) handleProxyRequest(msg ConnectMessage) {
   httpClient := &http.Client{Timeout: s.cfg.HTTPTimeout}
   resp, err := httpClient.Do(req)
   if err != nil {
-    _ = s.send(ConnectMessage{Type: "response", RequestID: msg.RequestID, Error: err.Error()})
+    _ = s.send(ConnectMessage{Type: protocoltypes.MessageTypeResponse, RequestID: msg.RequestID, Error: err.Error()})
     return
   }
   defer resp.Body.Close()
 
   responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
   if err != nil {
-    _ = s.send(ConnectMessage{Type: "response", RequestID: msg.RequestID, Error: err.Error()})
+    _ = s.send(ConnectMessage{Type: protocoltypes.MessageTypeResponse, RequestID: msg.RequestID, Error: err.Error()})
     return
   }
 
   _ = s.send(ConnectMessage{
-    Type:       "response",
+    Type:       protocoltypes.MessageTypeResponse,
     RequestID:  msg.RequestID,
     StatusCode: resp.StatusCode,
     Headers:    cloneHeader(resp.Header),
@@ -772,10 +750,6 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
   writeJSON(w, status, map[string]string{"error": msg})
-}
-
-func isValidClientKey(v string) bool {
-  return strings.HasPrefix(strings.TrimSpace(v), "pf_")
 }
 
 func (s *Service) sendIfConnected(msg ConnectMessage) error {
