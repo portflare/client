@@ -4,7 +4,5 @@ go 1.23.0
 
 require (
 	github.com/gorilla/websocket v1.5.3
-	github.com/portflare/protocol v0.0.0
+	github.com/portflare/protocol v0.1.1
 )
-
-replace github.com/portflare/protocol => ../protocol
