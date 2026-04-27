@@ -65,6 +65,10 @@ docker run --rm \
   ghcr.io/portflare/client:dev
 ```
 
+## FAQ
+
+See [`docs/usage.md`](docs/usage.md#faq) for Docker sidecar, embedded client, discovery, lifecycle, and Compose notes.
+
 ## Embedded example repo
 
 The embedded example now lives in its own repository:
