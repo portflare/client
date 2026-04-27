@@ -207,19 +207,33 @@ func runDaemon() {
     os.Exit(1)
   }
 
+  ctx, cancel := context.WithCancel(context.Background())
+  defer cancel()
+
+  signals := make(chan os.Signal, 2)
+  signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+  defer signal.Stop(signals)
   go func() {
-    if err := svc.serveLocalAPI(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+    sig := <-signals
+    logger.Info("shutdown signal received", "signal", sig.String())
+    cancel()
+    sig = <-signals
+    logger.Warn("second shutdown signal received; exiting immediately", "signal", sig.String())
+    os.Exit(1)
+  }()
+
+  go func() {
+    if err := svc.serveLocalAPI(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
       logger.Error("local api failed", "error", err)
-      os.Exit(1)
+      cancel()
     }
   }()
 
-  ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-  defer stop()
   if cfg.DiscoverEnabled {
     go svc.runDiscovery(ctx)
   }
   svc.run(ctx)
+  logger.Info("portflare stopped")
 }
 
 func (s *Service) loadState() error {
@@ -268,7 +282,7 @@ func (s *Service) saveState() error {
   return os.Rename(tmp, s.cfg.StatePath)
 }
 
-func (s *Service) serveLocalAPI() error {
+func (s *Service) serveLocalAPI(ctx context.Context) error {
   mux := http.NewServeMux()
   mux.HandleFunc("/apps", s.handleApps)
   mux.HandleFunc("/apps/", s.handleAppByName)
@@ -276,8 +290,23 @@ func (s *Service) serveLocalAPI() error {
   mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
     writeJSON(w, http.StatusOK, map[string]any{"ok": true})
   })
+
+  server := &http.Server{Addr: s.cfg.LocalAPIAddr, Handler: mux}
+  go func() {
+    <-ctx.Done()
+    s.logger.Info("shutting down portflare api")
+    shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    if err := server.Shutdown(shutdownCtx); err != nil {
+      s.logger.Warn("portflare api shutdown failed", "error", err)
+      _ = server.Close()
+      return
+    }
+    s.logger.Info("portflare api stopped")
+  }()
+
   s.logger.Info("portflare api listening", "addr", s.cfg.LocalAPIAddr)
-  return http.ListenAndServe(s.cfg.LocalAPIAddr, mux)
+  return server.ListenAndServe()
 }
 
 func (s *Service) handleApps(w http.ResponseWriter, r *http.Request) {
@@ -540,7 +569,7 @@ func (s *Service) run(ctx context.Context) {
       continue
     }
 
-    if err := s.connectAndServe(ctx); err != nil {
+    if err := s.connectAndServe(ctx); err != nil && ctx.Err() == nil {
       s.logger.Error("connection failed", "error", err)
     }
 
@@ -566,7 +595,25 @@ func (s *Service) connectAndServe(ctx context.Context) error {
   if err != nil {
     return err
   }
+  if ctx.Err() != nil {
+    _ = conn.Close()
+    return nil
+  }
   defer conn.Close()
+
+  closeOnCancel := make(chan struct{})
+  go func() {
+    select {
+    case <-ctx.Done():
+      s.logger.Info("closing server connection")
+      _ = conn.SetReadDeadline(time.Now())
+      _ = conn.SetWriteDeadline(time.Now().Add(time.Second))
+      _ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "shutdown"), time.Now().Add(time.Second))
+      _ = conn.Close()
+    case <-closeOnCancel:
+    }
+  }()
+  defer close(closeOnCancel)
 
   s.mu.Lock()
   s.conn = conn
@@ -578,12 +625,21 @@ func (s *Service) connectAndServe(ctx context.Context) error {
   s.mu.Unlock()
 
   for _, app := range apps {
+    if ctx.Err() != nil {
+      return nil
+    }
     if err := s.send(ConnectMessage{Type: protocoltypes.MessageTypeRegister, AppName: app.AppName, PublicPort: app.PublicPort}); err != nil {
+      if ctx.Err() != nil {
+        return nil
+      }
       return err
     }
   }
 
   for {
+    if ctx.Err() != nil {
+      return nil
+    }
     var msg ConnectMessage
     if err := conn.ReadJSON(&msg); err != nil {
       s.mu.Lock()
@@ -591,6 +647,9 @@ func (s *Service) connectAndServe(ctx context.Context) error {
       s.connected = false
       s.currentUser = ""
       s.mu.Unlock()
+      if ctx.Err() != nil || websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+        return nil
+      }
       return err
     }
     switch msg.Type {
