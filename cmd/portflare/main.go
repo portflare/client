@@ -81,7 +81,7 @@ func main() {
   if len(args) > 0 {
     switch args[0] {
     case "version", "--version", "-version", "-v":
-      fmt.Println(buildinfo.Summary("reverse-client"))
+      fmt.Println(buildinfo.Summary("portflare"))
       return
     case "help", "--help", "-h":
       printUsage(os.Stdout)
@@ -96,10 +96,10 @@ func main() {
 
 func printUsage(w io.Writer) {
   fmt.Fprintln(w, "usage:")
-  fmt.Fprintln(w, "  reverse-client daemon")
-  fmt.Fprintln(w, "  reverse-client expose --app <name> --target <url> [--public-port <port>]")
-  fmt.Fprintln(w, "  reverse-client list")
-  fmt.Fprintln(w, "  reverse-client version")
+  fmt.Fprintln(w, "  portflare daemon")
+  fmt.Fprintln(w, "  portflare expose --app <name> --target <url> [--public-port <port>]")
+  fmt.Fprintln(w, "  portflare list")
+  fmt.Fprintln(w, "  portflare version")
 }
 
 func runCLI(args []string) int {
@@ -167,7 +167,7 @@ func runCLI(args []string) int {
     fmt.Println(string(body))
     return 0
   case "version":
-    fmt.Println(buildinfo.Summary("reverse-client"))
+    fmt.Println(buildinfo.Summary("portflare"))
     return 0
   case "help", "--help", "-h":
     printUsage(os.Stdout)
@@ -196,7 +196,7 @@ func runDaemon() {
 
   logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
   version, commit, buildDate := buildinfo.Effective()
-  logger.Info("reverse client starting", "version", version, "commit", commit, "build_date", buildDate)
+  logger.Info("portflare starting", "version", version, "commit", commit, "build_date", buildDate)
   if cfg.ClientKey != "" && !protocolvalidation.IsValidClientKey(strings.TrimSpace(cfg.ClientKey)) {
     logger.Error("invalid client key format", "message", "REVERSE_CLIENT_KEY must start with pf_")
     os.Exit(1)
@@ -276,7 +276,7 @@ func (s *Service) serveLocalAPI() error {
   mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
     writeJSON(w, http.StatusOK, map[string]any{"ok": true})
   })
-  s.logger.Info("reverse client api listening", "addr", s.cfg.LocalAPIAddr)
+  s.logger.Info("portflare api listening", "addr", s.cfg.LocalAPIAddr)
   return http.ListenAndServe(s.cfg.LocalAPIAddr, mux)
 }
 

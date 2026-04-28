@@ -6,7 +6,7 @@ It is split out from the original monorepo so the client image, release pipeline
 
 ## What is here
 
-- `cmd/reverse-client`: the client binary and local API
+- `cmd/portflare`: the client binary and local API
 - `internal/buildinfo`: version metadata helpers
 - `Dockerfile`: production image for the client daemon
 - `docs/usage.md`: client usage and discovery notes
@@ -15,7 +15,7 @@ It is split out from the original monorepo so the client image, release pipeline
 
 ```bash
 make build
-./dist/bin/reverse-client version
+./dist/bin/portflare version
 ```
 
 ## Run
@@ -23,19 +23,19 @@ make build
 ```bash
 export REVERSE_SERVER_URL=https://r.myw.io
 export REVERSE_CLIENT_KEY=pf_your_key_here
-reverse-client daemon
+portflare daemon
 ```
 
 Register an app manually:
 
 ```bash
-reverse-client expose --app web --target http://127.0.0.1:3000
+portflare expose --app web --target http://127.0.0.1:3000
 ```
 
 Request a server-side public port too:
 
 ```bash
-reverse-client expose --app web --target http://127.0.0.1:3000 --public-port 13000
+portflare expose --app web --target http://127.0.0.1:3000 --public-port 13000
 ```
 
 ## Discovery mode
@@ -45,7 +45,7 @@ export REVERSE_CLIENT_DISCOVER=true
 export REVERSE_CLIENT_DISCOVER_ALLOW=3000,8080,9000-9100
 export REVERSE_CLIENT_DISCOVER_DENY=22,2375,2376
 export REVERSE_CLIENT_DISCOVER_NAMES=3000=web,8080=admin
-reverse-client daemon
+portflare daemon
 ```
 
 ## Docker
@@ -71,4 +71,4 @@ The embedded example now lives in its own repository:
 
 - `github.com/portflare/client-embedded-example`
 
-Use that repo when you want a sample application image that bundles `reverse-client` and an app in one container.
+Use that repo when you want a sample application image that bundles `portflare` and an app in one container.

@@ -3,7 +3,7 @@
 ## Daemon
 
 ```bash
-reverse-client daemon
+portflare daemon
 ```
 
 The client exposes a local API on `REVERSE_CLIENT_LISTEN_ADDR`.
@@ -11,14 +11,14 @@ The client exposes a local API on `REVERSE_CLIENT_LISTEN_ADDR`.
 ## Manual registration
 
 ```bash
-reverse-client expose --app web --target http://127.0.0.1:3000
-reverse-client expose --app web --target http://127.0.0.1:3000 --public-port 13000
+portflare expose --app web --target http://127.0.0.1:3000
+portflare expose --app web --target http://127.0.0.1:3000 --public-port 13000
 ```
 
 ## Listing apps
 
 ```bash
-reverse-client list
+portflare list
 curl http://127.0.0.1:9901/apps
 ```
 
