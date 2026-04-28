@@ -21,8 +21,8 @@ make build
 ## Run
 
 ```bash
-export REVERSE_SERVER_URL=https://r.myw.io
-export REVERSE_CLIENT_KEY=pf_your_key_here
+export PORTFLARE_SERVER_URL=https://r.myw.io
+export PORTFLARE_CLIENT_KEY=pf_your_key_here
 portflare daemon
 ```
 
@@ -41,10 +41,10 @@ portflare expose --app web --target http://127.0.0.1:3000 --public-port 13000
 ## Discovery mode
 
 ```bash
-export REVERSE_CLIENT_DISCOVER=true
-export REVERSE_CLIENT_DISCOVER_ALLOW=3000,8080,9000-9100
-export REVERSE_CLIENT_DISCOVER_DENY=22,2375,2376
-export REVERSE_CLIENT_DISCOVER_NAMES=3000=web,8080=admin
+export PORTFLARE_CLIENT_DISCOVER=true
+export PORTFLARE_CLIENT_DISCOVER_ALLOW=3000,8080,9000-9100
+export PORTFLARE_CLIENT_DISCOVER_DENY=22,2375,2376
+export PORTFLARE_CLIENT_DISCOVER_NAMES=3000=web,8080=admin
 portflare daemon
 ```
 
@@ -60,8 +60,8 @@ Run it locally:
 
 ```bash
 docker run --rm \
-  -e REVERSE_SERVER_URL=https://r.myw.io \
-  -e REVERSE_CLIENT_KEY=pf_your_key_here \
+  -e PORTFLARE_SERVER_URL=https://r.myw.io \
+  -e PORTFLARE_CLIENT_KEY=pf_your_key_here \
   ghcr.io/portflare/client:dev
 ```
 

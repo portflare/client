@@ -6,7 +6,7 @@
 portflare daemon
 ```
 
-The client exposes a local API on `REVERSE_CLIENT_LISTEN_ADDR`.
+The client exposes a local API on `PORTFLARE_CLIENT_LISTEN_ADDR`.
 
 ## Manual registration
 
@@ -25,12 +25,12 @@ curl http://127.0.0.1:9901/apps
 ## Discovery settings
 
 ```bash
-export REVERSE_CLIENT_DISCOVER=true
-export REVERSE_CLIENT_DISCOVER_ALLOW=3000,8080,9000-9100
-export REVERSE_CLIENT_DISCOVER_DENY=22,2375,2376
-export REVERSE_CLIENT_DISCOVER_NAMES=3000=web,8080=admin
-export REVERSE_CLIENT_DISCOVER_INTERVAL=5s
-export REVERSE_CLIENT_DISCOVER_GRACE=10m
+export PORTFLARE_CLIENT_DISCOVER=true
+export PORTFLARE_CLIENT_DISCOVER_ALLOW=3000,8080,9000-9100
+export PORTFLARE_CLIENT_DISCOVER_DENY=22,2375,2376
+export PORTFLARE_CLIENT_DISCOVER_NAMES=3000=web,8080=admin
+export PORTFLARE_CLIENT_DISCOVER_INTERVAL=5s
+export PORTFLARE_CLIENT_DISCOVER_GRACE=10m
 ```
 
 ## FAQ
@@ -39,12 +39,12 @@ export REVERSE_CLIENT_DISCOVER_GRACE=10m
 
 `docker compose config` requires Docker Compose v2, usually installed as the Docker CLI plugin. If Docker itself is installed but the plugin is missing, validation fails before Portflare is involved. Install the Compose plugin or validate on a host that has `docker compose` available.
 
-### Where should I put `REVERSE_CLIENT_KEY`?
+### Where should I put `PORTFLARE_CLIENT_KEY`?
 
 For Compose deployments, put it in a local `.env` file and do not commit it:
 
 ```env
-REVERSE_CLIENT_KEY=pf_your_key_here
+PORTFLARE_CLIENT_KEY=pf_your_key_here
 ```
 
 If a real key is pasted into chat, logs, or a public issue, treat it as compromised and rotate it from the Portflare user page.
@@ -69,12 +69,12 @@ Sidecar mode runs Portflare in a separate container. If you want localhost-style
 docker run -d \
   --name my-app-portflare \
   --network container:my-app \
-  -e REVERSE_SERVER_URL=https://r.myw.io \
-  -e REVERSE_CLIENT_KEY \
-  -e REVERSE_CLIENT_LISTEN_ADDR=127.0.0.1:9901 \
-  -e REVERSE_CLIENT_DISCOVER=true \
-  -e REVERSE_CLIENT_DISCOVER_ALLOW=3000,8080,9000-9100 \
-  -e REVERSE_CLIENT_DISCOVER_NAMES=3000=web,8080=admin \
+  -e PORTFLARE_SERVER_URL=https://r.myw.io \
+  -e PORTFLARE_CLIENT_KEY \
+  -e PORTFLARE_CLIENT_LISTEN_ADDR=127.0.0.1:9901 \
+  -e PORTFLARE_CLIENT_DISCOVER=true \
+  -e PORTFLARE_CLIENT_DISCOVER_ALLOW=3000,8080,9000-9100 \
+  -e PORTFLARE_CLIENT_DISCOVER_NAMES=3000=web,8080=admin \
   -v "$HOME/.config/portflare-client:/state" \
   ghcr.io/portflare/client:latest
 ```
@@ -96,9 +96,9 @@ docker network create portflare-shared
 
 docker run -d --network portflare-shared --name app-a my-app-a
 docker run -d --network portflare-shared --name portflare \
-  -e REVERSE_SERVER_URL=https://r.myw.io \
-  -e REVERSE_CLIENT_KEY \
-  -e REVERSE_CLIENT_LISTEN_ADDR=0.0.0.0:9901 \
+  -e PORTFLARE_SERVER_URL=https://r.myw.io \
+  -e PORTFLARE_CLIENT_KEY \
+  -e PORTFLARE_CLIENT_LISTEN_ADDR=0.0.0.0:9901 \
   ghcr.io/portflare/client:latest
 
 portflare expose --app app-a-web --target http://app-a:3000
@@ -128,5 +128,5 @@ Keep the sidecar's state persistent, for example:
 volumes:
   - ./data/portflare-client:/state
 environment:
-  REVERSE_CLIENT_STATE_PATH: /state/state.json
+  PORTFLARE_CLIENT_STATE_PATH: /state/state.json
 ```

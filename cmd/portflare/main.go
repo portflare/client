@@ -108,7 +108,7 @@ func runCLI(args []string) int {
     return 1
   }
 
-  localAPI := env("REVERSE_CLIENT_API", "http://127.0.0.1:9901")
+  localAPI := env("PORTFLARE_CLIENT_API", "http://127.0.0.1:9901")
   switch args[0] {
   case "expose":
     app := ""
@@ -180,25 +180,25 @@ func runCLI(args []string) int {
 
 func runDaemon() {
   cfg := Config{
-    ServerURL:         env("REVERSE_SERVER_URL", "http://host.docker.internal:8080"),
-    ClientKey:         env("REVERSE_CLIENT_KEY", ""),
-    LocalAPIAddr:      env("REVERSE_CLIENT_LISTEN_ADDR", "127.0.0.1:9901"),
-    StatePath:         env("REVERSE_CLIENT_STATE_PATH", "/tmp/portflare-client/state.json"),
-    ReconnectDelay:    envDuration("REVERSE_CLIENT_RECONNECT_DELAY", time.Second),
-    HTTPTimeout:       envDuration("REVERSE_CLIENT_HTTP_TIMEOUT", 60*time.Second),
-    DiscoverEnabled:   envBool("REVERSE_CLIENT_DISCOVER", false),
-    DiscoverInterval:  envDuration("REVERSE_CLIENT_DISCOVER_INTERVAL", 5*time.Second),
-    DiscoverGrace:     envDuration("REVERSE_CLIENT_DISCOVER_GRACE", 10*time.Minute),
-    DiscoverAllow:     mustParsePortRanges(env("REVERSE_CLIENT_DISCOVER_ALLOW", "")),
-    DiscoverDeny:      mustParsePortRanges(env("REVERSE_CLIENT_DISCOVER_DENY", "22,2375,2376")),
-    DiscoverNameByPort: mustParsePortNameMap(env("REVERSE_CLIENT_DISCOVER_NAMES", "")),
+    ServerURL:         env("PORTFLARE_SERVER_URL", "http://host.docker.internal:8080"),
+    ClientKey:         env("PORTFLARE_CLIENT_KEY", ""),
+    LocalAPIAddr:      env("PORTFLARE_CLIENT_LISTEN_ADDR", "127.0.0.1:9901"),
+    StatePath:         env("PORTFLARE_CLIENT_STATE_PATH", "/tmp/portflare-client/state.json"),
+    ReconnectDelay:    envDuration("PORTFLARE_CLIENT_RECONNECT_DELAY", time.Second),
+    HTTPTimeout:       envDuration("PORTFLARE_CLIENT_HTTP_TIMEOUT", 60*time.Second),
+    DiscoverEnabled:   envBool("PORTFLARE_CLIENT_DISCOVER", false),
+    DiscoverInterval:  envDuration("PORTFLARE_CLIENT_DISCOVER_INTERVAL", 5*time.Second),
+    DiscoverGrace:     envDuration("PORTFLARE_CLIENT_DISCOVER_GRACE", 10*time.Minute),
+    DiscoverAllow:     mustParsePortRanges(env("PORTFLARE_CLIENT_DISCOVER_ALLOW", "")),
+    DiscoverDeny:      mustParsePortRanges(env("PORTFLARE_CLIENT_DISCOVER_DENY", "22,2375,2376")),
+    DiscoverNameByPort: mustParsePortNameMap(env("PORTFLARE_CLIENT_DISCOVER_NAMES", "")),
   }
 
   logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
   version, commit, buildDate := buildinfo.Effective()
   logger.Info("portflare starting", "version", version, "commit", commit, "build_date", buildDate)
   if cfg.ClientKey != "" && !protocolvalidation.IsValidClientKey(strings.TrimSpace(cfg.ClientKey)) {
-    logger.Error("invalid client key format", "message", "REVERSE_CLIENT_KEY must start with pf_")
+    logger.Error("invalid client key format", "message", "PORTFLARE_CLIENT_KEY must start with pf_")
     os.Exit(1)
   }
   svc := &Service{cfg: cfg, logger: logger, apps: map[string]*AppRegistration{}}
@@ -531,7 +531,7 @@ func (s *Service) run(ctx context.Context) {
       return
     }
     if s.cfg.ClientKey == "" {
-      s.logger.Warn("REVERSE_CLIENT_KEY is not set; waiting before retry")
+      s.logger.Warn("PORTFLARE_CLIENT_KEY is not set; waiting before retry")
       select {
       case <-ctx.Done():
         return
