@@ -15,12 +15,15 @@ portflare expose --app web --target http://127.0.0.1:3000
 portflare expose --app web --target http://127.0.0.1:3000 --public-port 13000
 ```
 
-## Listing apps
+## Listing apps and stats
 
 ```bash
 portflare list
 curl http://127.0.0.1:9901/apps
+curl http://127.0.0.1:9901/stats
 ```
+
+The daemon logs server connect/disconnect events, app registration acknowledgements, proxied request start/completion/failure details, and a periodic one-minute stats summary.
 
 ## Discovery settings
 
