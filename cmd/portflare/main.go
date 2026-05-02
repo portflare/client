@@ -49,6 +49,13 @@ type AppRegistration = protocoltypes.AppRegistration
 
 type ConnectMessage = protocoltypes.ConnectMessage
 
+type RegistrationResponse struct {
+	UserName        string `json:"user_name"`
+	PublicUserLabel string `json:"public_user_label"`
+	Email           string `json:"email,omitempty"`
+	APIKey          string `json:"api_key"`
+}
+
 type clientState struct {
 	Apps map[string]*AppRegistration `json:"apps"`
 }
@@ -113,6 +120,7 @@ func main() {
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage:")
 	fmt.Fprintln(w, "  portflare daemon")
+	fmt.Fprintln(w, "  portflare register --server <url> --user <name> [--email <email>]")
 	fmt.Fprintln(w, "  portflare expose --app <name> --target <url> [--public-port <port>]")
 	fmt.Fprintln(w, "  portflare list")
 	fmt.Fprintln(w, "  portflare version")
@@ -126,6 +134,56 @@ func runCLI(args []string) int {
 
 	localAPI := env("PORTFLARE_CLIENT_API", "http://127.0.0.1:9901")
 	switch args[0] {
+	case "register":
+		serverURL := strings.TrimRight(env("PORTFLARE_SERVER_URL", "http://host.docker.internal:8080"), "/")
+		userName := ""
+		email := ""
+		for i := 1; i < len(args); i++ {
+			switch args[i] {
+			case "--server":
+				i++
+				if i < len(args) {
+					serverURL = strings.TrimRight(args[i], "/")
+				}
+			case "--user":
+				i++
+				if i < len(args) {
+					userName = args[i]
+				}
+			case "--email":
+				i++
+				if i < len(args) {
+					email = args[i]
+				}
+			}
+		}
+		if serverURL == "" || userName == "" {
+			printUsage(os.Stderr)
+			return 1
+		}
+		payload, _ := json.Marshal(map[string]string{"user_name": userName, "email": email})
+		resp, err := http.Post(serverURL+"/api/register", "application/json", bytes.NewReader(payload))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode >= 300 {
+			fmt.Fprintln(os.Stderr, string(body))
+			return 1
+		}
+		var registration RegistrationResponse
+		if err := json.Unmarshal(body, &registration); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Printf("registered user %s\n", registration.UserName)
+		fmt.Printf("public label: %s\n", registration.PublicUserLabel)
+		fmt.Printf("client key: %s\n", registration.APIKey)
+		fmt.Printf("\nexport PORTFLARE_SERVER_URL=%q\n", serverURL)
+		fmt.Printf("export PORTFLARE_CLIENT_KEY=%q\n", registration.APIKey)
+		return 0
 	case "expose":
 		app := ""
 		target := ""

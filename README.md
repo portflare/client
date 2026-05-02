@@ -20,6 +20,14 @@ make build
 
 ## Run
 
+Register a user and print the environment variables needed by the daemon:
+
+```bash
+portflare register --server https://r.myw.io --user alice --email alice@example.com
+```
+
+Then export the printed values and start the daemon:
+
 ```bash
 export PORTFLARE_SERVER_URL=https://r.myw.io
 export PORTFLARE_CLIENT_KEY=pf_your_key_here

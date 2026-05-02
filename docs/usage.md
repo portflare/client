@@ -1,5 +1,15 @@
 # Portflare Client usage
 
+## Registration
+
+When server registration is open, create a user and client key from the CLI:
+
+```bash
+portflare register --server https://r.myw.io --user alice --email alice@example.com
+```
+
+The command prints `PORTFLARE_SERVER_URL` and `PORTFLARE_CLIENT_KEY` exports for starting the daemon. It does not write a `.env` file or modify your shell automatically.
+
 ## Daemon
 
 ```bash
