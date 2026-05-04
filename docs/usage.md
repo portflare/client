@@ -46,6 +46,51 @@ export PORTFLARE_CLIENT_DISCOVER_INTERVAL=5s
 export PORTFLARE_CLIENT_DISCOVER_GRACE=10m
 ```
 
+Discovery names apps as `app-{port}` by default, for example `app-3000`. Exact per-port names in `PORTFLARE_CLIENT_DISCOVER_NAMES` take precedence over generated names:
+
+```bash
+export PORTFLARE_CLIENT_DISCOVER_NAMES=3000=web,8080=admin
+```
+
+For hosts with many apps, configure a descriptor and template:
+
+```bash
+export PORTFLARE_CLIENT_DISCOVER_DESCRIPTOR=devbox
+export PORTFLARE_CLIENT_DISCOVER_NAME_TEMPLATE=descriptor-port
+```
+
+Port `3000` becomes `devbox-3000`.
+
+Supported `PORTFLARE_CLIENT_DISCOVER_NAME_TEMPLATE` values are:
+
+- empty, `port`, or `app-port`: default `app-{port}`
+- `descriptor-port`: `{descriptor}-{port}`
+- `descriptor-proto-port`: `{descriptor}-{proto}-{port}`
+- `descriptor-proto`: `{descriptor}-{proto}` with automatic `-{port}` suffixing when multiple ports would collide
+
+Protocol labels are explicit per-port naming metadata:
+
+```bash
+export PORTFLARE_CLIENT_DISCOVER_DESCRIPTOR=devbox
+export PORTFLARE_CLIENT_DISCOVER_NAME_TEMPLATE=descriptor-proto-port
+export PORTFLARE_CLIENT_DISCOVER_PROTOCOLS=3000=http,8443=https,6379=redis,3306=mysql
+```
+
+Example names:
+
+```text
+devbox-http-3000
+devbox-https-8443
+devbox-redis-6379
+devbox-mysql-3306
+```
+
+With `descriptor-proto`, unique protocols produce shorter names such as `devbox-redis`. If two ports share the same generated name, Portflare appends the port deterministically, such as `devbox-http-3000` and `devbox-http-8080`.
+
+If a template needs a descriptor and none is configured, discovery falls back to `app-{port}`. If a proto template has no protocol label for a port, it falls back to `{descriptor}-{port}`. Changing descriptor/template/protocol settings changes app names and public URLs, so the server may treat them as new apps requiring approval; old discovered app records are not renamed automatically.
+
+Protocol labels are for naming only. Labels such as `mysql`, `redis`, or `tls` do not imply raw TCP or database proxy support by themselves.
+
 ## FAQ
 
 ### Why did `docker compose config` fail?

@@ -31,18 +31,34 @@ import (
 )
 
 type Config struct {
-	ServerURL          string
-	ClientKey          string
-	LocalAPIAddr       string
-	StatePath          string
-	ReconnectDelay     time.Duration
-	HTTPTimeout        time.Duration
-	DiscoverEnabled    bool
-	DiscoverInterval   time.Duration
-	DiscoverGrace      time.Duration
-	DiscoverAllow      []portRange
-	DiscoverDeny       []portRange
-	DiscoverNameByPort map[int]string
+	ServerURL        string
+	ClientKey        string
+	LocalAPIAddr     string
+	StatePath        string
+	ReconnectDelay   time.Duration
+	HTTPTimeout      time.Duration
+	DiscoverEnabled  bool
+	DiscoverInterval time.Duration
+	DiscoverGrace    time.Duration
+	DiscoverAllow    []portRange
+	DiscoverDeny     []portRange
+	DiscoverNaming   DiscoveryNamingConfig
+}
+
+type discoveryNameTemplate string
+
+const (
+	discoveryNameTemplateAppPort             discoveryNameTemplate = "app-port"
+	discoveryNameTemplateDescriptorPort      discoveryNameTemplate = "descriptor-port"
+	discoveryNameTemplateDescriptorProtoPort discoveryNameTemplate = "descriptor-proto-port"
+	discoveryNameTemplateDescriptorProto     discoveryNameTemplate = "descriptor-proto"
+)
+
+type DiscoveryNamingConfig struct {
+	ExactNameByPort map[int]string
+	ProtocolByPort  map[int]string
+	Descriptor      string
+	NameTemplate    discoveryNameTemplate
 }
 
 type AppRegistration = protocoltypes.AppRegistration
@@ -64,6 +80,7 @@ type discoverCandidate struct {
 	AppName   string
 	TargetURL string
 	Port      int
+	Protocol  string
 }
 
 type portRange struct {
@@ -124,6 +141,11 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  portflare expose --app <name> --target <url> [--public-port <port>]")
 	fmt.Fprintln(w, "  portflare list")
 	fmt.Fprintln(w, "  portflare version")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "discovery naming env:")
+	fmt.Fprintln(w, "  PORTFLARE_CLIENT_DISCOVER_DESCRIPTOR=<descriptor>")
+	fmt.Fprintln(w, "  PORTFLARE_CLIENT_DISCOVER_NAME_TEMPLATE=app-port|descriptor-port|descriptor-proto-port|descriptor-proto")
+	fmt.Fprintln(w, "  PORTFLARE_CLIENT_DISCOVER_PROTOCOLS=3000=http,6379=redis")
 }
 
 func runCLI(args []string) int {
@@ -254,18 +276,18 @@ func runCLI(args []string) int {
 
 func runDaemon() {
 	cfg := Config{
-		ServerURL:          env("PORTFLARE_SERVER_URL", "http://host.docker.internal:8080"),
-		ClientKey:          env("PORTFLARE_CLIENT_KEY", ""),
-		LocalAPIAddr:       env("PORTFLARE_CLIENT_LISTEN_ADDR", "127.0.0.1:9901"),
-		StatePath:          env("PORTFLARE_CLIENT_STATE_PATH", "/tmp/portflare-client/state.json"),
-		ReconnectDelay:     envDuration("PORTFLARE_CLIENT_RECONNECT_DELAY", time.Second),
-		HTTPTimeout:        envDuration("PORTFLARE_CLIENT_HTTP_TIMEOUT", 60*time.Second),
-		DiscoverEnabled:    envBool("PORTFLARE_CLIENT_DISCOVER", false),
-		DiscoverInterval:   envDuration("PORTFLARE_CLIENT_DISCOVER_INTERVAL", 5*time.Second),
-		DiscoverGrace:      envDuration("PORTFLARE_CLIENT_DISCOVER_GRACE", 10*time.Minute),
-		DiscoverAllow:      mustParsePortRanges(env("PORTFLARE_CLIENT_DISCOVER_ALLOW", "")),
-		DiscoverDeny:       mustParsePortRanges(env("PORTFLARE_CLIENT_DISCOVER_DENY", "22,2375,2376")),
-		DiscoverNameByPort: mustParsePortNameMap(env("PORTFLARE_CLIENT_DISCOVER_NAMES", "")),
+		ServerURL:        env("PORTFLARE_SERVER_URL", "http://host.docker.internal:8080"),
+		ClientKey:        env("PORTFLARE_CLIENT_KEY", ""),
+		LocalAPIAddr:     env("PORTFLARE_CLIENT_LISTEN_ADDR", "127.0.0.1:9901"),
+		StatePath:        env("PORTFLARE_CLIENT_STATE_PATH", "/tmp/portflare-client/state.json"),
+		ReconnectDelay:   envDuration("PORTFLARE_CLIENT_RECONNECT_DELAY", time.Second),
+		HTTPTimeout:      envDuration("PORTFLARE_CLIENT_HTTP_TIMEOUT", 60*time.Second),
+		DiscoverEnabled:  envBool("PORTFLARE_CLIENT_DISCOVER", false),
+		DiscoverInterval: envDuration("PORTFLARE_CLIENT_DISCOVER_INTERVAL", 5*time.Second),
+		DiscoverGrace:    envDuration("PORTFLARE_CLIENT_DISCOVER_GRACE", 10*time.Minute),
+		DiscoverAllow:    mustParsePortRanges(env("PORTFLARE_CLIENT_DISCOVER_ALLOW", "")),
+		DiscoverDeny:     mustParsePortRanges(env("PORTFLARE_CLIENT_DISCOVER_DENY", "22,2375,2376")),
+		DiscoverNaming:   mustLoadDiscoveryNamingConfig(),
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -560,7 +582,7 @@ func (s *Service) runDiscovery(ctx context.Context) {
 }
 
 func (s *Service) refreshDiscovery() {
-	candidates, err := discoverListeningHTTPCandidates(s.cfg.DiscoverAllow, s.cfg.DiscoverDeny, s.cfg.DiscoverNameByPort)
+	candidates, err := discoverListeningHTTPCandidates(s.cfg.DiscoverAllow, s.cfg.DiscoverDeny, s.cfg.DiscoverNaming)
 	if err != nil {
 		s.logger.Warn("discovery scan failed", "error", err)
 		return
@@ -590,7 +612,7 @@ func (s *Service) refreshDiscovery() {
 			s.mu.Unlock()
 			_ = s.saveState()
 			_ = s.sendIfConnected(ConnectMessage{Type: protocoltypes.MessageTypeRegister, AppName: appName})
-			s.logger.Info("discovered app", "app", appName, "port", port)
+			s.logger.Info("discovered app", "app", appName, "port", port, "protocol", candidate.Protocol, "discovery_template", s.cfg.DiscoverNaming.NameTemplate, "discovery_descriptor", s.cfg.DiscoverNaming.Descriptor)
 			continue
 		}
 
@@ -1037,7 +1059,28 @@ func envDuration(key string, fallback time.Duration) time.Duration {
 	return parsed
 }
 
-func discoverListeningHTTPCandidates(allow, deny []portRange, names map[int]string) ([]discoverCandidate, error) {
+func mustLoadDiscoveryNamingConfig() DiscoveryNamingConfig {
+	template, err := parseDiscoveryNameTemplate(env("PORTFLARE_CLIENT_DISCOVER_NAME_TEMPLATE", ""))
+	if err != nil {
+		panic(err)
+	}
+	names, err := parsePortNameMap(env("PORTFLARE_CLIENT_DISCOVER_NAMES", ""))
+	if err != nil {
+		panic(err)
+	}
+	protocols, err := parsePortProtocolMap(env("PORTFLARE_CLIENT_DISCOVER_PROTOCOLS", ""))
+	if err != nil {
+		panic(err)
+	}
+	return DiscoveryNamingConfig{
+		ExactNameByPort: names,
+		ProtocolByPort:  protocols,
+		Descriptor:      slug(env("PORTFLARE_CLIENT_DISCOVER_DESCRIPTOR", "")),
+		NameTemplate:    template,
+	}
+}
+
+func discoverListeningHTTPCandidates(allow, deny []portRange, naming DiscoveryNamingConfig) ([]discoverCandidate, error) {
 	ports := map[int]struct{}{}
 	for _, path := range []string{"/proc/net/tcp", "/proc/net/tcp6"} {
 		entries, err := parseProcNetTCP(path)
@@ -1061,27 +1104,115 @@ func discoverListeningHTTPCandidates(allow, deny []portRange, names map[int]stri
 	for port := range ports {
 		ordered = append(ordered, port)
 	}
+	return buildDiscoverCandidates(ordered, naming), nil
+}
+
+type discoveryNameCandidate struct {
+	discoverCandidate
+	exact bool
+}
+
+func buildDiscoverCandidates(ports []int, naming DiscoveryNamingConfig) []discoverCandidate {
+	ordered := append([]int(nil), ports...)
 	sort.Ints(ordered)
 
-	out := make([]discoverCandidate, 0, len(ordered))
+	generated := make([]discoveryNameCandidate, 0, len(ordered))
+	nameCounts := map[string]int{}
+	exactNames := map[string]struct{}{}
 	for _, port := range ordered {
-		appName := fmt.Sprintf("app-%d", port)
-		if configured, ok := names[port]; ok && configured != "" {
-			appName = configured
+		candidate, exact := discoveryCandidateForPort(port, naming)
+		generated = append(generated, discoveryNameCandidate{discoverCandidate: candidate, exact: exact})
+		nameCounts[candidate.AppName]++
+		if exact {
+			exactNames[candidate.AppName] = struct{}{}
 		}
-		out = append(out, discoverCandidate{
-			AppName:   appName,
-			TargetURL: fmt.Sprintf("http://127.0.0.1:%d", port),
-			Port:      port,
-		})
 	}
-	return normalizeDiscoverCandidates(out), nil
+
+	out := make([]discoverCandidate, 0, len(generated))
+	usedNames := map[string]struct{}{}
+	for name := range exactNames {
+		usedNames[name] = struct{}{}
+	}
+	for _, candidate := range generated {
+		if !candidate.exact {
+			baseName := candidate.AppName
+			if nameCounts[baseName] > 1 || nameIsUsed(candidate.AppName, usedNames) {
+				candidate.AppName = slug(fmt.Sprintf("%s-%d", baseName, candidate.Port))
+			}
+			for suffix := 2; ; suffix++ {
+				if !nameIsUsed(candidate.AppName, usedNames) {
+					break
+				}
+				candidate.AppName = slug(fmt.Sprintf("%s-%d-%d", baseName, candidate.Port, suffix))
+			}
+			usedNames[candidate.AppName] = struct{}{}
+		}
+		out = append(out, candidate.discoverCandidate)
+	}
+	return normalizeDiscoverCandidates(out)
+}
+
+func nameIsUsed(name string, used map[string]struct{}) bool {
+	_, exists := used[name]
+	return exists
+}
+
+func discoveryCandidateForPort(port int, naming DiscoveryNamingConfig) (discoverCandidate, bool) {
+	protocol := slug(naming.ProtocolByPort[port])
+	appName := ""
+	exact := false
+	if configured, ok := naming.ExactNameByPort[port]; ok && configured != "" {
+		appName = configured
+		exact = true
+	} else {
+		appName = generatedDiscoveryName(port, protocol, naming)
+	}
+	appName = slug(appName)
+	if appName == "" {
+		appName = fmt.Sprintf("app-%d", port)
+	}
+	return discoverCandidate{
+		AppName:   appName,
+		TargetURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+		Port:      port,
+		Protocol:  protocol,
+	}, exact
+}
+
+func generatedDiscoveryName(port int, protocol string, naming DiscoveryNamingConfig) string {
+	descriptor := slug(naming.Descriptor)
+	switch naming.NameTemplate {
+	case discoveryNameTemplateDescriptorPort:
+		if descriptor == "" {
+			return fmt.Sprintf("app-%d", port)
+		}
+		return fmt.Sprintf("%s-%d", descriptor, port)
+	case discoveryNameTemplateDescriptorProtoPort:
+		if descriptor == "" {
+			return fmt.Sprintf("app-%d", port)
+		}
+		if protocol == "" {
+			return fmt.Sprintf("%s-%d", descriptor, port)
+		}
+		return fmt.Sprintf("%s-%s-%d", descriptor, protocol, port)
+	case discoveryNameTemplateDescriptorProto:
+		if descriptor == "" {
+			return fmt.Sprintf("app-%d", port)
+		}
+		if protocol == "" {
+			return fmt.Sprintf("%s-%d", descriptor, port)
+		}
+		return fmt.Sprintf("%s-%s", descriptor, protocol)
+	default:
+		return fmt.Sprintf("app-%d", port)
+	}
 }
 
 func normalizeDiscoverCandidates(in []discoverCandidate) []discoverCandidate {
 	out := make([]discoverCandidate, 0, len(in))
 	for _, candidate := range in {
 		candidate.AppName = slug(candidate.AppName)
+		candidate.Protocol = slug(candidate.Protocol)
 		if candidate.AppName == "" {
 			candidate.AppName = fmt.Sprintf("app-%d", candidate.Port)
 		}
@@ -1174,6 +1305,21 @@ func mustParsePortNameMap(raw string) map[int]string {
 	return names
 }
 
+func parseDiscoveryNameTemplate(raw string) (discoveryNameTemplate, error) {
+	switch strings.TrimSpace(strings.ToLower(raw)) {
+	case "", "port", "app-port":
+		return discoveryNameTemplateAppPort, nil
+	case string(discoveryNameTemplateDescriptorPort):
+		return discoveryNameTemplateDescriptorPort, nil
+	case string(discoveryNameTemplateDescriptorProtoPort):
+		return discoveryNameTemplateDescriptorProtoPort, nil
+	case string(discoveryNameTemplateDescriptorProto):
+		return discoveryNameTemplateDescriptorProto, nil
+	default:
+		return "", fmt.Errorf("invalid discovery name template %q", raw)
+	}
+}
+
 func parsePortRanges(raw string) ([]portRange, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -1238,6 +1384,41 @@ func parsePortNameMap(raw string) (map[int]string, error) {
 			return nil, fmt.Errorf("invalid app name in mapping %q", part)
 		}
 		out[port] = name
+	}
+	nameByPort := map[string]int{}
+	for port, name := range out {
+		if existingPort, ok := nameByPort[name]; ok && existingPort != port {
+			return nil, fmt.Errorf("duplicate app name %q in mapping for ports %d and %d", name, existingPort, port)
+		}
+		nameByPort[name] = port
+	}
+	return out, nil
+}
+
+func parsePortProtocolMap(raw string) (map[int]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return map[int]string{}, nil
+	}
+	out := map[int]string{}
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		portRaw, protocolRaw, ok := strings.Cut(part, "=")
+		if !ok {
+			return nil, fmt.Errorf("invalid port protocol mapping %q", part)
+		}
+		port, err := strconv.Atoi(strings.TrimSpace(portRaw))
+		if err != nil || port <= 0 {
+			return nil, fmt.Errorf("invalid port in mapping %q", part)
+		}
+		protocol := slug(protocolRaw)
+		if protocol == "" {
+			return nil, fmt.Errorf("invalid protocol label in mapping %q", part)
+		}
+		out[port] = protocol
 	}
 	return out, nil
 }

@@ -56,6 +56,27 @@ export PORTFLARE_CLIENT_DISCOVER_NAMES=3000=web,8080=admin
 portflare daemon
 ```
 
+By default, discovered apps are named `app-{port}`, for example `app-3000`. Exact per-port names in `PORTFLARE_CLIENT_DISCOVER_NAMES` still win.
+
+For larger machines, add a descriptor prefix:
+
+```bash
+export PORTFLARE_CLIENT_DISCOVER_DESCRIPTOR=devbox
+export PORTFLARE_CLIENT_DISCOVER_NAME_TEMPLATE=descriptor-port
+```
+
+This names port `3000` as `devbox-3000`.
+
+You can also add explicit protocol labels for naming:
+
+```bash
+export PORTFLARE_CLIENT_DISCOVER_DESCRIPTOR=devbox
+export PORTFLARE_CLIENT_DISCOVER_NAME_TEMPLATE=descriptor-proto-port
+export PORTFLARE_CLIENT_DISCOVER_PROTOCOLS=3000=http,6379=redis,3306=mysql
+```
+
+This produces names such as `devbox-http-3000` and `devbox-redis-6379`. Protocol labels are naming metadata only; they do not by themselves add non-HTTP proxy support.
+
 ## Docker
 
 Build the client image:
