@@ -863,16 +863,13 @@ func (s *Service) handleProxyRequest(msg ConnectMessage) {
 	bodyBytes := base64.StdEncoding.DecodedLen(len(msg.BodyBase64))
 	s.logger.Info("proxy request received", "request_id", msg.RequestID, "app", msg.AppName, "method", msg.Method, "url", msg.URL, "body_bytes", bodyBytes)
 
-	s.mu.RLock()
-	app, ok := s.apps[msg.AppName]
-	s.mu.RUnlock()
+	app, ok := s.proxyAppForRequest(msg.AppName)
 	if !ok {
 		s.respondProxyError(msg.RequestID, msg.AppName, msg.Method, msg.URL, started, bodyBytes, "app is not registered on this client")
 		return
 	}
-	if app.Offline {
-		s.respondProxyError(msg.RequestID, msg.AppName, msg.Method, msg.URL, started, bodyBytes, "app is currently offline on this client")
-		return
+	if app.WasOffline {
+		s.logger.Info("proxying app previously marked offline", "request_id", msg.RequestID, "app", msg.AppName, "target", app.TargetURL)
 	}
 
 	reqURL, err := url.Parse(strings.TrimSpace(app.TargetURL))
@@ -923,6 +920,8 @@ func (s *Service) handleProxyRequest(msg ConnectMessage) {
 	}
 	defer resp.Body.Close()
 
+	s.markAppOnlineFromProxy(app.AppName)
+
 	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		s.respondProxyError(msg.RequestID, msg.AppName, msg.Method, msg.URL, started, bodyBytes, err.Error())
@@ -943,6 +942,38 @@ func (s *Service) handleProxyRequest(msg ConnectMessage) {
 	}
 	s.recordProxyRequest(resp.StatusCode, bodyBytes, len(responseBody), false)
 	s.logger.Info("proxy request completed", "request_id", msg.RequestID, "app", msg.AppName, "method", msg.Method, "url", msg.URL, "target", reqURL.String(), "status", resp.StatusCode, "duration_ms", time.Since(started).Milliseconds(), "bytes_in", bodyBytes, "bytes_out", len(responseBody))
+}
+
+type proxyApp struct {
+	AppName    string
+	TargetURL  string
+	WasOffline bool
+}
+
+func (s *Service) proxyAppForRequest(appName string) (proxyApp, bool) {
+	s.mu.RLock()
+	app, ok := s.apps[appName]
+	if !ok {
+		s.mu.RUnlock()
+		return proxyApp{}, false
+	}
+	out := proxyApp{AppName: app.AppName, TargetURL: app.TargetURL, WasOffline: app.Offline}
+	s.mu.RUnlock()
+	return out, true
+}
+
+func (s *Service) markAppOnlineFromProxy(appName string) {
+	s.mu.Lock()
+	app, ok := s.apps[appName]
+	if !ok || !app.Offline {
+		s.mu.Unlock()
+		return
+	}
+	app.Offline = false
+	app.LastSeenAt = time.Now().UTC()
+	app.UpdatedAt = app.LastSeenAt
+	s.mu.Unlock()
+	_ = s.saveState()
 }
 
 func (s *Service) respondProxyError(requestID, appName, method, requestURL string, started time.Time, bytesIn int, message string) {

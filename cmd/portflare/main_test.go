@@ -91,6 +91,41 @@ func TestServiceStatePersistence(t *testing.T) {
 	}
 }
 
+func TestProxyAppForRequestAllowsOfflineApp(t *testing.T) {
+	svc := &Service{
+		apps: map[string]*AppRegistration{
+			"web": {AppName: "web", TargetURL: "http://10.0.0.91:3000", Offline: true},
+		},
+	}
+
+	app, ok := svc.proxyAppForRequest("web")
+	if !ok {
+		t.Fatal("expected offline app to be available for proxy attempt")
+	}
+	if app.AppName != "web" || app.TargetURL != "http://10.0.0.91:3000" || !app.WasOffline {
+		t.Fatalf("unexpected proxy app: %#v", app)
+	}
+}
+
+func TestMarkAppOnlineFromProxyClearsOffline(t *testing.T) {
+	dir := t.TempDir()
+	svc := &Service{
+		cfg: Config{StatePath: filepath.Join(dir, "state.json")},
+		apps: map[string]*AppRegistration{
+			"web": {AppName: "web", TargetURL: "http://127.0.0.1:3000", Offline: true},
+		},
+	}
+
+	svc.markAppOnlineFromProxy("web")
+	app := svc.apps["web"]
+	if app.Offline {
+		t.Fatal("expected proxy success to clear offline flag")
+	}
+	if app.LastSeenAt.IsZero() || app.UpdatedAt.IsZero() {
+		t.Fatalf("expected timestamps to be updated: %#v", app)
+	}
+}
+
 func TestParsePortRanges(t *testing.T) {
 	got, err := parsePortRanges("3000,8080,9000-9002")
 	if err != nil {
