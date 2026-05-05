@@ -23,6 +23,36 @@ func TestIsValidClientKey(t *testing.T) {
 	}
 }
 
+func TestReadyzIncludesBuildInfo(t *testing.T) {
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+
+	handleReadyz("portflare").ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", rr.Code, rr.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["ok"] != true || body["application"] != "portflare" || body["version"] == "" || body["build_time"] == "" || body["go_version"] == "" {
+		t.Fatalf("unexpected ready response: %#v", body)
+	}
+	if body["build_info_ok"] != true || body["main"] == nil {
+		t.Fatalf("expected debug build info in response: %#v", body)
+	}
+}
+
+func TestReadyzRejectsNonGet(t *testing.T) {
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/readyz", nil)
+
+	handleReadyz("portflare").ServeHTTP(rr, req)
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected method not allowed, got %d", rr.Code)
+	}
+}
+
 func TestToWebSocketURL(t *testing.T) {
 	got, err := toWebSocketURL("https://reverse.example.test")
 	if err != nil {

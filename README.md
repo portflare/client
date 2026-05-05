@@ -46,6 +46,16 @@ Request a server-side public port too:
 portflare expose --app web --target http://127.0.0.1:3000 --public-port 13000
 ```
 
+## Readiness
+
+The local API exposes readiness and build metadata:
+
+```bash
+curl http://127.0.0.1:9901/readyz
+```
+
+The response includes the application name, effective version, commit, build time, Go version, and `runtime/debug.ReadBuildInfo` module/settings/dependency data.
+
 ## Discovery mode
 
 ```bash

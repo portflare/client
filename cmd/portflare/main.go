@@ -388,6 +388,7 @@ func (s *Service) serveLocalAPI(ctx context.Context) error {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
+	mux.HandleFunc("/readyz", handleReadyz("portflare"))
 
 	server := &http.Server{Addr: s.cfg.LocalAPIAddr, Handler: mux}
 	go func() {
@@ -1009,6 +1010,16 @@ func firstHeader(h map[string][]string, key string) string {
 		}
 	}
 	return ""
+}
+
+func handleReadyz(application string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, buildinfo.Ready(application))
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
